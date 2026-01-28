@@ -16,6 +16,8 @@ namespace Moonlight.Interaction
         [Inject] private InteractableController Controller { get; set; }
         [Inject] private InteractionLockController LockController { get; set; }
 
+        private List<InteractionOption> _options = new List<InteractionOption>();
+
         [Inject]
         private void Construct()
         {
@@ -27,22 +29,22 @@ namespace Moonlight.Interaction
         
         public void Interact(GameObject interactor)
         {
-            var options = new List<InteractionOption>();
-            options.AddRange(DefaultOptions);
+            _options.Clear();
+            _options.AddRange(DefaultOptions);
             
             foreach (var factory in OptionFactories)
             {
-                options.AddRange(factory.Generate(gameObject));
+                _options.AddRange(factory.Generate(gameObject));
             }
 
-            foreach (var option in options)
+            foreach (var option in _options)
             {
                 Container.Inject(option);
             }
-
+            
             var ctx = new InteractionContext(interactor, gameObject);
 
-            var possibleInteractions = options
+            var possibleInteractions = _options
                 .Where(x => x.Validate(ctx))
                 .ToArray();
 

@@ -16,6 +16,7 @@ namespace Moonlight.Interaction
             Container.Bind<InteractionGlyphLibrary>().FromInstance(GlyphLibrary).AsSingle();
             Container.BindInterfacesAndSelfTo<InteractableController>().AsSingle();
             Container.BindInterfacesAndSelfTo<InteractableService>().AsSingle();
+            Container.BindInterfacesAndSelfTo<ProximityService>().AsSingle();
         }
     }
 }

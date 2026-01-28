@@ -8,6 +8,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
+using Zenject;
 
 namespace Moonlight.Interaction
 {
@@ -31,6 +32,8 @@ namespace Moonlight.Interaction
     [DisallowMultipleComponent]
     public class ProximityPrompt : MonoBehaviour
     {
+        [Inject] private ProximityService _proximityService;
+
         [Header("Detection")] [Tooltip("Player transform. If null, will try GameObject tagged 'Player'.")]
         public Transform player;
         
@@ -86,7 +89,8 @@ namespace Moonlight.Interaction
             Hold
         }
 
-        private bool _visible;
+        public bool IsVisible { get; private set; }
+        
         private float _holdT;
         private Tween _alphaTween, _scaleTween;
 
@@ -131,6 +135,8 @@ namespace Moonlight.Interaction
         {
             if (playerInput != null)
                 playerInput.onControlsChanged += OnControlsChanged;
+                
+            _proximityService?.Register(this);
         }
 
         private void OnDisable()
@@ -138,6 +144,7 @@ namespace Moonlight.Interaction
             if (playerInput != null)
                 playerInput.onControlsChanged -= OnControlsChanged;
 
+            _proximityService?.Unregister(this);
             KillTweens();
         }
 
@@ -148,31 +155,23 @@ namespace Moonlight.Interaction
 
         private void Update()
         {
-            if (!player) return;
+            // Only visual updates (billboarding) remain in Update
+            if (!IsVisible || !visualRoot || !_cam) return;
 
             // Face camera (simple billboard)
-            if (visualRoot && _cam)
+            visualRoot.position = transform.position + worldOffset;
+            var dir = visualRoot.position - _cam.transform.position;
+            dir.y = 0; // yaw-only billboard
+            if (dir.sqrMagnitude > 0.0001f)
             {
-                // Keep it hovering above the object
-                visualRoot.position = transform.position + worldOffset;
-                var dir = visualRoot.position - _cam.transform.position;
-                dir.y = 0; // yaw-only billboard
-                if (dir.sqrMagnitude > 0.0001f)
-                {
-                    visualRoot.forward = dir.normalized;
-                }
+                visualRoot.forward = dir.normalized;
             }
+        }
 
-            var dist = Vector3.Distance(player.position, transform.position);
-            var shouldShow = dist <= activationRadius;
-
-            if (shouldShow != _visible)
-            {
-                SetVisible(shouldShow);
-            }
-
-            // Early out if not visible
-            if (!_visible || interactAction == null || interactAction.action == null) return;
+        // Called by ProximityService
+        public void HandleInput()
+        {
+            if (!IsVisible || interactAction == null || interactAction.action == null) return;
 
             // Handle input
             var action = interactAction.action;
@@ -213,14 +212,21 @@ namespace Moonlight.Interaction
 
         private void CompleteInteraction()
         {
-            _interactables.ForEach(x => x.Interact(player.gameObject));
-            // Optionally auto-hide after interact:
-            SetVisible(false);
+            // Use cached player transform if available, otherwise find tag
+            var interactor = player ? player.gameObject : GameObject.FindWithTag("Player");
+            if (interactor)
+            {
+                _interactables.ForEach(x => x.Interact(interactor));
+                // Optionally auto-hide after interact:
+                SetVisible(false);
+            }
         }
 
-        private void SetVisible(bool show, bool instant = false)
+        public void SetVisible(bool show, bool instant = false)
         {
-            _visible = show;
+            if (IsVisible == show) return;
+            
+            IsVisible = show;
             if (!canvasGroup || !visualRoot) return;
 
             KillTweens();
