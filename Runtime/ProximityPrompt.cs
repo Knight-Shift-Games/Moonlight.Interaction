@@ -1,9 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using DG.Tweening;
 using Moonlight.Core;
-using Sirenix.Utilities;
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -12,23 +10,6 @@ using Zenject;
 
 namespace Moonlight.Interaction
 {
-    public interface IPlayerGetter
-    {
-        Transform Transform { get; set; }
-    }
-
-    public sealed class DefaultPlayerGetter : IPlayerGetter
-    {
-        private Transform _transform;
-
-        public Transform Transform
-        
-        {
-            get => _transform;
-            set => _transform = value;
-        }
-    }
-    
     [DisallowMultipleComponent]
     public class ProximityPrompt : MonoBehaviour
     {
