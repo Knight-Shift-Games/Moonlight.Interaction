@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using Moonlight.Core;
 using UnityEngine;
 using Zenject;
 
@@ -8,7 +7,6 @@ namespace Moonlight.Interaction
     public class ProximityService : ITickable
     {
         private readonly List<ProximityPrompt> _prompts = new();
-        private Transform _playerTransform;
         private ProximityPrompt _closestPrompt;
         
         // Config
@@ -33,22 +31,15 @@ namespace Moonlight.Interaction
 
         public void Tick()
         {
-            if (_playerTransform == null)
-            {
-                // Try to find player (can be optimized later with a PlayerService)
-                var playerObj = GameObject.FindWithTag("Player");
-                if (playerObj) _playerTransform = playerObj.transform;
-                else return;
-            }
-
-            Vector3 playerPos = _playerTransform.position;
             ProximityPrompt newClosest = null;
             float closestDistSqr = float.MaxValue;
 
-            // Single loop for all prompts
             foreach (var prompt in _prompts)
             {
                 if (prompt == null) continue;
+
+                if (!TryGetPlayerPosition(prompt, out var playerPos))
+                    continue;
 
                 float sqrDist = (prompt.transform.position - playerPos).sqrMagnitude;
                 float activationSqr = prompt.activationRadius * prompt.activationRadius;
@@ -85,6 +76,22 @@ namespace Moonlight.Interaction
             {
                 _closestPrompt.HandleInput();
             }
+        }
+
+        /// <summary>
+        /// Local player root must be assigned on <see cref="ProximityPrompt.player"/>
+        /// (e.g. <c>QuantumProximityPromptAdapter</c>).
+        /// </summary>
+        private static bool TryGetPlayerPosition(ProximityPrompt prompt, out Vector3 playerPos)
+        {
+            if (prompt.player != null)
+            {
+                playerPos = prompt.player.position;
+                return true;
+            }
+
+            playerPos = default;
+            return false;
         }
     }
 }

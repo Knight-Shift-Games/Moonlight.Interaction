@@ -8,7 +8,7 @@ namespace Moonlight.Interaction
 {
     public sealed class QuantumProximityPromptAdapter : QuantumEntityViewComponent
     {
-        [Inject] private LazyInject<QuantumEntityViewUpdater> _evu;
+        [Inject] private QuantumEntityViewUpdaterProvider Provider { get; set; }
         private ProximityPrompt _proximityPrompt;
 
         [Inject] private SignalBus SignalBus { get; set; }
@@ -19,15 +19,15 @@ namespace Moonlight.Interaction
             
             if (NetworkUtil.TryGetLocalPlayerCharacter(f, out var player))
             {
-                _proximityPrompt.player = _evu.Value.GetView(player).transform;
+                _proximityPrompt.player = Provider.ViewUpdater.GetView(player).transform;
             }
             else
             {
-                SignalBus.GetStream<OnPlayerJoinedSimulationSignal>()
+                SignalBus.GetStream<OnPlayerCharacterSpawnedSignal>()
                     .Subscribe(_ =>
                     {
                         NetworkUtil.TryGetLocalPlayerCharacter(f, out var localPlayerEntity);
-                        _proximityPrompt.player = _evu.Value.GetView(localPlayerEntity).transform;
+                        _proximityPrompt.player = Provider.ViewUpdater.GetView(localPlayerEntity).transform;
                     })
                     .AddTo(this);
             }

@@ -13,9 +13,7 @@ namespace Moonlight.Interaction
     [DisallowMultipleComponent]
     public class ProximityPrompt : MonoBehaviour
     {
-        [Inject] private ProximityService _proximityService;
-
-        [Header("Detection")] [Tooltip("Player transform. If null, will try GameObject tagged 'Player'.")]
+        [Header("Detection")] [Tooltip("Local player transform (assigned at runtime, e.g. QuantumProximityPromptAdapter).")]
         public Transform player;
         
         [Tooltip("How close the player must be to show the prompt.")]
@@ -63,6 +61,8 @@ namespace Moonlight.Interaction
         [Tooltip("Curve for fade tween.")] public Ease fadeEase = Ease.OutQuad;
 
         [SerializeField] private List<Interactable> _interactables = new();
+        
+        [Inject] private ProximityService _proximityService;
         
         public enum InteractionMode
         {
@@ -193,14 +193,11 @@ namespace Moonlight.Interaction
 
         private void CompleteInteraction()
         {
-            // Use cached player transform if available, otherwise find tag
-            var interactor = player ? player.gameObject : GameObject.FindWithTag("Player");
-            if (interactor)
-            {
-                _interactables.ForEach(x => x.Interact(interactor));
-                // Optionally auto-hide after interact:
-                SetVisible(false);
-            }
+            if (player == null) return;
+
+            var interactor = player.gameObject;
+            _interactables.ForEach(x => x.Interact(interactor));
+            SetVisible(false);
         }
 
         public void SetVisible(bool show, bool instant = false)
