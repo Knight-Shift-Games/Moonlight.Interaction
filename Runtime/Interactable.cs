@@ -16,7 +16,7 @@ namespace Moonlight.Interaction
         [Inject] private InteractableController Controller { get; set; }
         [Inject] private InteractionLockController LockController { get; set; }
 
-        private List<InteractionOption> _options = new List<InteractionOption>();
+        private List<InteractionOption> _options = new();
 
         [Inject]
         private void Construct()
@@ -45,19 +45,14 @@ namespace Moonlight.Interaction
             var ctx = new InteractionContext(interactor, gameObject);
 
             var possibleInteractions = _options
-                .Where(x => x.Validate(ctx))
+                .Where(x => x.Validate(ctx) || x.Validators.IsListNullOrEmpty())
                 .ToArray();
 
-            if (possibleInteractions.Length > 1)
+            if (possibleInteractions.Length >= 1)
             {
                 Controller.NewInteraction(interactor, gameObject, possibleInteractions);
+                LockController.AcquireLock(InteractionLockType.All);
             }
-            else
-            {
-                
-            }
-            
-            LockController.AcquireLock(InteractionLockType.All);
         }
     }
 }

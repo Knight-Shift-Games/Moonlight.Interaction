@@ -193,7 +193,10 @@ namespace Moonlight.Interaction
 
         private void CompleteInteraction()
         {
-            if (player == null) return;
+            if (player == null)
+            {
+                return;
+            }
 
             var interactor = player.gameObject;
             _interactables.ForEach(x => x.Interact(interactor));
