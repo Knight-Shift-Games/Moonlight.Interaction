@@ -49,6 +49,15 @@ namespace Moonlight.Interaction
         [Tooltip("Optional radial/linear progress (Image.type = Filled) for Hold mode.")]
         public Image holdFill;
 
+        [Header("Prompt Text")] [Tooltip("Options used when converting the interact binding into display text.")]
+        public InputBinding.DisplayStringOptions bindingDisplayOptions = InputBinding.DisplayStringOptions.DontIncludeInteractions;
+
+        [Tooltip("Title format for Press mode. Use {key} where the input binding should appear.")]
+        public string pressTitleFormat = "Press {key} to Interact";
+
+        [Tooltip("Title format for Hold mode. Use {key} where the input binding should appear.")]
+        public string holdTitleFormat = "Hold {key} to Interact";
+
         [Header("Glyphs (Optional)")] [Tooltip("Map binding display strings to sprites for nice-looking key icons.")]
         public KeyGlyphLibrary glyphLibrary;
 
@@ -61,6 +70,8 @@ namespace Moonlight.Interaction
         [Tooltip("Curve for fade tween.")] public Ease fadeEase = Ease.OutQuad;
 
         [SerializeField] private List<Interactable> _interactables = new();
+        
+        private const string KeyToken = "{key}";
         
         [Inject] private ProximityService _proximityService;
         
@@ -239,24 +250,8 @@ namespace Moonlight.Interaction
         {
             if (interactAction == null || interactAction.action == null) return;
 
-            string display = null;
-
             var action = interactAction.action;
-
-            // If a PlayerInput is provided, try to pick a binding for the current scheme.
-            if (playerInput != null && !string.IsNullOrEmpty(playerInput.currentControlScheme))
-            {
-                var scheme = playerInput.currentControlScheme;
-                // Find a binding matching the scheme if possible
-                var bindingIndex = FindBindingIndexForControlScheme(action, scheme);
-                display = bindingIndex >= 0
-                    ? action.GetBindingDisplayString(bindingIndex)
-                    : action.GetBindingDisplayString(); // fallback
-            }
-            else
-            {
-                display = action.GetBindingDisplayString();
-            }
+            var display = GetBindingDisplay(action);
 
             if (keyLabel) keyLabel.text = display;
 
@@ -267,14 +262,29 @@ namespace Moonlight.Interaction
                 if (sprite != null) keyIcon.sprite = sprite;
             }
 
-            // Optional title like "Press E to Interact"
             if (titleLabel)
             {
-                if (interactionMode == InteractionMode.Press)
-                    titleLabel.text = $"Press {display} to Interact";
-                else
-                    titleLabel.text = $"Hold {display} to Interact";
+                titleLabel.text = FormatTitle(display);
             }
+        }
+
+        private string GetBindingDisplay(InputAction action)
+        {
+            if (playerInput == null || string.IsNullOrEmpty(playerInput.currentControlScheme))
+            {
+                return action.GetBindingDisplayString(bindingDisplayOptions);
+            }
+
+            var bindingIndex = FindBindingIndexForControlScheme(action, playerInput.currentControlScheme);
+            return bindingIndex >= 0
+                ? action.GetBindingDisplayString(bindingIndex, bindingDisplayOptions)
+                : action.GetBindingDisplayString(bindingDisplayOptions);
+        }
+
+        private string FormatTitle(string key)
+        {
+            var format = interactionMode == InteractionMode.Press ? pressTitleFormat : holdTitleFormat;
+            return string.IsNullOrEmpty(format) ? key : format.Replace(KeyToken, key);
         }
 
         private int FindBindingIndexForControlScheme(InputAction action, string controlScheme)

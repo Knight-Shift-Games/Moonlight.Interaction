@@ -28,6 +28,7 @@ namespace Moonlight.Interaction
                     {
                         NetworkUtil.TryGetLocalPlayerCharacter(f, out var localPlayerEntity);
                         _proximityPrompt.player = Provider.ViewUpdater.GetView(localPlayerEntity).transform;
+                        _proximityPrompt.UpdateBindingGlyph();
                     })
                     .AddTo(this);
             }

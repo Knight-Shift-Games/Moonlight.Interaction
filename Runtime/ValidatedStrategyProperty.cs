@@ -13,13 +13,25 @@ namespace Moonlight.Interaction
         [SerializeReference, AlwaysFromBlueprint]
         private List<ValidatedInteractionStrategy> Strategies = new();
 
+        /// <summary>
+        /// Optional reusable bundle of strategies (evaluated after <see cref="Strategies"/>).
+        /// </summary>
+        [SerializeField, AlwaysFromBlueprint]
+        private ValidatedInteractionStrategyGroup StrategyGroup;
+
         public bool GetValidStrategy(
             DiContainer container,
             InteractionContext ctx,
             IInteractionPayload payload, 
             out IInteractionStrategy strategy)
         {
-            var validatedStrategy = Strategies.FirstOrDefault(x => x.Validations.TrueForAll(validation =>
+            IEnumerable<ValidatedInteractionStrategy> ordered = Strategies;
+            if (StrategyGroup != null && StrategyGroup.Strategies.Count > 0)
+            {
+                ordered = ordered.Concat(StrategyGroup.Strategies);
+            }
+
+            var validatedStrategy = ordered.FirstOrDefault(x => x.Validations.TrueForAll(validation =>
             {
                 container.Inject(validation);
                 return validation.Validate(ctx, payload).Success();
@@ -39,7 +51,8 @@ namespace Moonlight.Interaction
         {
             return new ValidatedStrategyProperty
             {
-                Strategies = this.Strategies
+                Strategies = this.Strategies,
+                StrategyGroup = this.StrategyGroup
             };
         }
     }

@@ -1,3 +1,4 @@
+using System.Linq;
 using Moonlight.Core;
 using Moonlight.UI;
 using ObservableCollections;
@@ -31,6 +32,13 @@ namespace Moonlight.Interaction
                 Options.Add(interactionOption);
             }
 
+            if (Options.Count == 1)
+            {
+                var ctx = new InteractionContext(interactor, interactable);
+                Options.First().Strategy.Handle(ctx, null);
+                return;
+            }
+            
             ShowAddon();
         }
 
