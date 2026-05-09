@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Moonlight.Inventory;
 using UnityEngine;
-using Zenject;
 
 namespace Moonlight.Interaction
 {
@@ -20,9 +19,9 @@ namespace Moonlight.Interaction
         private ValidatedInteractionStrategyGroup StrategyGroup;
 
         public bool GetValidStrategy(
-            DiContainer container,
+            InteractionStrategyResolver resolver,
             InteractionContext ctx,
-            IInteractionPayload payload, 
+            IInteractionPayload payload,
             out IInteractionStrategy strategy)
         {
             IEnumerable<ValidatedInteractionStrategy> ordered = Strategies;
@@ -31,20 +30,7 @@ namespace Moonlight.Interaction
                 ordered = ordered.Concat(StrategyGroup.Strategies);
             }
 
-            var validatedStrategy = ordered.FirstOrDefault(x => x.Validations.TrueForAll(validation =>
-            {
-                container.Inject(validation);
-                return validation.Validate(ctx, payload).Success();
-            }));
-
-            if (validatedStrategy != null)
-            {
-                strategy = validatedStrategy.Strategy;
-                return true;
-            }
-
-            strategy = null;
-            return false;
+            return resolver.TryResolve(ordered, ctx, payload, out strategy);
         }
 
         public override object Clone()

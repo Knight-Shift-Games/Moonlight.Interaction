@@ -17,6 +17,7 @@ namespace Moonlight.Interaction
             Container.BindInterfacesAndSelfTo<InteractableController>().AsSingle();
             Container.BindInterfacesAndSelfTo<InteractableService>().AsSingle();
             Container.BindInterfacesAndSelfTo<ProximityService>().AsSingle();
+            Container.BindInterfacesAndSelfTo<InteractionStrategyResolver>().AsSingle();
         }
     }
 }
