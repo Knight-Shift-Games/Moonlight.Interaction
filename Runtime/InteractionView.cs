@@ -42,6 +42,8 @@ namespace Moonlight.Interaction
                           {
                               Destroy(OptionViews[i].gameObject);
                           }
+                          
+                          OptionViews.Clear();
                       })
                       .AddTo(this);
         }
