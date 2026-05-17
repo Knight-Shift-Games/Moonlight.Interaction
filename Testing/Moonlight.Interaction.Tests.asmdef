@@ -1,0 +1,27 @@
+{
+    "name": "Moonlight.Interaction.Tests",
+    "rootNamespace": "Moonlight.Interaction.Tests",
+    "references": [
+        "GUID:338f30a454cda5e49a2777e17fdaa110",
+        "Zenject",
+        "Zenject-TestFramework",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner",
+        "GUID:7bcdf20fee3280741ab7fda593641f31"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
