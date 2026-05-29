@@ -17,7 +17,7 @@ namespace Moonlight.Interaction
         {
             _proximityPrompt = GetComponent<ProximityPrompt>();
             
-            if (NetworkUtil.TryGetLocalPlayerCharacter(f, out var player))
+            if (NetworkUtil.TryGetLocalPlayerCharacter(f, out var player) && player != EntityRef.None)
             {
                 _proximityPrompt.player = Provider.ViewUpdater.GetView(player).transform;
             }
