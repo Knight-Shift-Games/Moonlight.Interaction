@@ -1,10 +1,13 @@
 using System;
 using Moonlight.Core;
+#if QUANTUM_UNITY
 using Quantum;
+#endif
 using Zenject;
 
 namespace Moonlight.Interaction
 {
+#if QUANTUM_UNITY
     [Serializable]
     public sealed class SendInteractionCommandInteractionStrategy : IInteractionStrategy
     {
@@ -25,4 +28,5 @@ namespace Moonlight.Interaction
             return new ResultSuccess();
         }
     }
+#endif
 }

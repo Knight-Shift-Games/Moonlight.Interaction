@@ -1,11 +1,14 @@
 ﻿using Moonlight.Backend;
+#if QUANTUM_UNITY
 using Moonlight.Quantum;
 using Quantum;
+#endif
 using R3;
 using Zenject;
 
 namespace Moonlight.Interaction
 {
+#if QUANTUM_UNITY
     public sealed class QuantumProximityPromptAdapter : QuantumEntityViewComponent
     {
         [Inject] private QuantumEntityViewUpdaterProvider Provider { get; set; }
@@ -34,4 +37,5 @@ namespace Moonlight.Interaction
             }
         }
     }
+#endif
 }
