@@ -22,7 +22,7 @@ namespace Moonlight.Interaction
             {
                 var command = new InteractionCommand();
                 command.TargetEntity = interactableView.EntityRef;
-                QuantumRunner.Default.Game.SendCommand(command);
+                QuantumRunner.Default.Game.AddCommand(command);
             }
 
             return new ResultSuccess();
