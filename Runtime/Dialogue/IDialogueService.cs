@@ -7,9 +7,12 @@ namespace Moonlight.Interaction
     {
         DialogueState State { get; }
         string Error { get; }
+        System.Exception LastException { get; }
         string NodeId { get; }
         string SpeakerId { get; }
-        string Text { get; }
+        string ExpressionId { get; }
+        bool WaitingForChoice { get; }
+        string GetText();
         bool CanStart(DialogueGraph graph, DialogueTrigger trigger, DialogueContext context);
         bool Start(DialogueGraph graph, DialogueTrigger trigger, DialogueContext context, string sessionId);
         bool Advance();

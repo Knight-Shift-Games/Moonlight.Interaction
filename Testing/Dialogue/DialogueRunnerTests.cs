@@ -12,11 +12,15 @@ namespace Moonlight.Interaction.Tests
             public bool Condition;
             public bool Reject;
             public bool Throw;
+            public bool ThrowCondition;
+            public bool ThrowText;
             public int Effects;
             public readonly HashSet<string> Deliveries = new();
             public Action Callback;
-            public bool IsConditionMet(string key, DialogueContext context) { Callback?.Invoke(); return Condition; }
-            public string ResolveText(string key) { Callback?.Invoke(); return "localized:" + key; }
+            public bool IsConditionMet(string key, DialogueContext context)
+            { Callback?.Invoke(); if (ThrowCondition) throw new InvalidOperationException("condition failure"); return Condition; }
+            public string ResolveText(string key)
+            { Callback?.Invoke(); if (ThrowText) throw new InvalidOperationException("text failure"); return "localized:" + key; }
             public bool TryExecute(string action, string argument, string id, DialogueContext context)
             {
                 Callback?.Invoke();
@@ -39,12 +43,197 @@ namespace Moonlight.Interaction.Tests
         static DialogueContext Context => new("player-1", "npc-1");
 
         [Test]
+        public void ReplayingCheckpointAlongDifferentChoiceKeepsBothActionIdentities()
+        {
+            var adapter = new Adapter();
+            var runner = new DialogueRunner(adapter);
+            var graph = Graph(new DialogueNode { Id = "choose", Kind = DialogueNodeKind.Choice, Choices = new[] {
+                new DialogueChoice { Id = "a", TextKey = "a", Next = "reward" },
+                new DialogueChoice { Id = "b", TextKey = "b", Next = "take" } } },
+                Action("reward"), Action("take"), End());
+            graph.Nodes[2].Action = "item.take";
+            runner.Start(graph, DialogueTrigger.Interaction, Context, "s");
+            var snapshot = runner.Suspend();
+            runner.Resume(graph, snapshot); runner.Choose("a");
+            runner.Resume(graph, snapshot); runner.Choose("b");
+            Assert.That(adapter.Effects, Is.EqualTo(2));
+            Assert.That(adapter.Deliveries, Does.Contain("v1:1:s:0:11:npc.trainer:6:reward:15:training.unlock:4:dash"));
+            Assert.That(adapter.Deliveries, Does.Contain("v1:1:s:0:11:npc.trainer:4:take:9:item.take:4:dash"));
+            runner.Resume(graph, snapshot); runner.Choose("a");
+            Assert.That(adapter.Effects, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void CancelBeforeFirstActionPreventsEffectWithoutRelyingOnDeduplication()
+        {
+            var adapter = new Adapter();
+            var runner = new DialogueRunner(adapter);
+            runner.Start(Graph(Line("line", "action"), Action(), End()), DialogueTrigger.Interaction, Context, "fresh");
+            Assert.That(runner.Cancel(), Is.True);
+            Assert.That(runner.State, Is.EqualTo(DialogueState.Cancelled));
+            Assert.That(runner.Advance(), Is.False);
+            Assert.That(adapter.Effects, Is.Zero);
+            Assert.That(adapter.Deliveries, Is.Empty);
+        }
+
+        [TestCase(null)]
+        [TestCase("")]
+        [TestCase(" ")]
+        public void InvalidSessionIdsFailClearly(string session)
+        {
+            var runner = new DialogueRunner(new Adapter());
+            Assert.That(runner.Start(Graph(Line(), End()), DialogueTrigger.Interaction, Context, session), Is.False);
+            Assert.That(runner.Error, Is.EqualTo("A durable session ID is required."));
+            Assert.That(runner.Start(Graph(Line(), End()), DialogueTrigger.Interaction, Context, "valid"), Is.True);
+        }
+
+        [Test]
+        public void NullAdapterAndContextsAreArgumentErrorsWithValidControls()
+        {
+            Assert.Throws<ArgumentNullException>(() => new DialogueRunner(null));
+            var runner = new DialogueRunner(new Adapter());
+            var graph = Graph(Line(), End());
+            Assert.Throws<ArgumentNullException>(() => runner.CanStart(graph, DialogueTrigger.Interaction, null));
+            Assert.Throws<ArgumentNullException>(() => runner.Start(graph, DialogueTrigger.Interaction, null, "s"));
+            Assert.That(runner.CanStart(graph, DialogueTrigger.Interaction, Context), Is.True);
+            Assert.That(runner.Start(graph, DialogueTrigger.Interaction, Context, "s"), Is.True);
+        }
+
+        [TestCase("null")]
+        [TestCase("context")]
+        [TestCase("branch")]
+        [TestCase("action")]
+        [TestCase("missing")]
+        public void SnapshotNullAndNonwaitingGuardsHaveMatchingControls(string mutation)
+        {
+            var runner = new DialogueRunner(new Adapter());
+            var graph = Graph(Line(), Action(), new DialogueNode { Id = "branch", Kind = DialogueNodeKind.Branch,
+                Condition = "ready", Next = "end", Otherwise = "end" }, End());
+            runner.Start(graph, DialogueTrigger.Interaction, Context, "s");
+            var snapshot = runner.Suspend();
+            Assert.That(runner.Resume(graph, snapshot), Is.True);
+            snapshot = runner.Suspend();
+            switch (mutation) {
+                case "null": snapshot = null; break;
+                case "context": snapshot.Context = null; break;
+                default: snapshot.NodeId = mutation; break;
+            }
+            Assert.That(runner.Resume(graph, snapshot), Is.False);
+            Assert.That(runner.Error, Is.EqualTo(mutation == "null" || mutation == "context"
+                ? "Snapshot does not match this graph/schema." : "Snapshot must identify a waiting line or choice."));
+        }
+
+        [Test]
+        public void ResumeCannotReplaceRunningSessionAndWrongInputKindDoesNothing()
+        {
+            var runner = new DialogueRunner(new Adapter());
+            var graph = Graph(Line(), End());
+            runner.Start(graph, DialogueTrigger.Interaction, Context, "s");
+            var snapshot = runner.Suspend();
+            runner.Resume(graph, snapshot);
+            Assert.That(runner.Resume(graph, snapshot), Is.False);
+            Assert.That(runner.Choose("any"), Is.False);
+            Assert.That(runner.NodeId, Is.EqualTo("line"));
+            runner.Cancel();
+            graph = Graph(new DialogueNode { Id = "choose", Kind = DialogueNodeKind.Choice, Choices = new[] {
+                new DialogueChoice { Id = "yes", TextKey = "yes", Condition = "blocked", Next = "end" } } }, End());
+            runner.Start(graph, DialogueTrigger.Interaction, Context, "s2");
+            Assert.That(runner.Advance(), Is.False);
+            Assert.That(runner.WaitingForChoice, Is.True);
+            Assert.That(runner.GetChoices(), Is.Empty);
+            Assert.That(runner.NodeId, Is.EqualTo("choose"));
+            Assert.That(runner.Cancel(), Is.True);
+        }
+
+        [TestCase(long.MaxValue, false)]
+        [TestCase(long.MaxValue - 1, true)]
+        public void ActionSequenceExhaustionFailsBeforeDelivery(long sequence, bool succeeds)
+        {
+            var adapter = new Adapter();
+            var runner = new DialogueRunner(adapter);
+            var graph = Graph(Line("line", "action"), Action(), End());
+            runner.Start(graph, DialogueTrigger.Interaction, Context, "s");
+            var snapshot = runner.Suspend(); snapshot.ActionSequence = sequence;
+            Assert.That(runner.Resume(graph, snapshot), Is.True);
+            Assert.That(runner.Advance(), Is.EqualTo(succeeds));
+            Assert.That(adapter.Effects, Is.EqualTo(succeeds ? 1 : 0));
+            if (!succeeds) Assert.That(runner.Error, Is.EqualTo("Action sequence exhausted."));
+        }
+
+        [Test]
+        public void ConditionProbeThrowsWithoutChangingStateButStartRecordsException()
+        {
+            var adapter = new Adapter { ThrowCondition = true };
+            var runner = new DialogueRunner(adapter);
+            var graph = Graph(Line(), End()); graph.Conditions = new[] { "ready" };
+            Assert.Throws<InvalidOperationException>(() => runner.CanStart(graph, DialogueTrigger.Interaction, Context));
+            Assert.That(runner.State, Is.EqualTo(DialogueState.Idle));
+            Assert.That(runner.Error, Is.Null);
+            Assert.That(runner.Start(graph, DialogueTrigger.Interaction, Context, "s"), Is.False);
+            Assert.That(runner.Error, Is.EqualTo("Dialogue adapter failed: condition failure"));
+            Assert.That(runner.LastException, Is.TypeOf<InvalidOperationException>());
+            adapter.ThrowCondition = false; adapter.Condition = true;
+            Assert.That(runner.Start(graph, DialogueTrigger.Interaction, Context, "s2"), Is.True);
+            Assert.That(runner.LastException, Is.Null);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TextAndChoiceProbesPropagateWithoutFaulting(bool choices)
+        {
+            var adapter = new Adapter();
+            var runner = new DialogueRunner(adapter);
+            var graph = choices ? Graph(new DialogueNode { Id = "choose", Kind = DialogueNodeKind.Choice, Choices = new[] {
+                new DialogueChoice { Id = "yes", TextKey = "yes", Condition = "ready", Next = "end" } } }, End()) : Graph(Line(), End());
+            runner.Start(graph, DialogueTrigger.Interaction, Context, "s");
+            adapter.ThrowText = true; adapter.Condition = true;
+            if (choices) Assert.Throws<InvalidOperationException>(() => runner.GetChoices());
+            else Assert.Throws<InvalidOperationException>(() => runner.GetText());
+            Assert.That(runner.State, Is.EqualTo(DialogueState.Running));
+            Assert.That(runner.Error, Is.Null);
+            adapter.ThrowText = false;
+            if (choices) {
+                adapter.ThrowCondition = true;
+                Assert.Throws<InvalidOperationException>(() => runner.GetChoices());
+                Assert.That(runner.State, Is.EqualTo(DialogueState.Running));
+                adapter.ThrowCondition = false;
+                Assert.That(runner.GetChoices().Count, Is.EqualTo(1));
+            } else Assert.That(runner.GetText(), Is.EqualTo("localized:dialogue_training_name"));
+        }
+
+        [Test]
+        public void FingerprintNormalizesNullStringsAcrossUnitySerialization()
+        {
+            var runner = new DialogueRunner(new Adapter());
+            var graph = Graph(Line(), End());
+            runner.Start(graph, DialogueTrigger.Interaction, Context, "s");
+            var snapshot = runner.Suspend();
+            foreach (var node in graph.Nodes) { node.Argument ??= ""; node.Action ??= "";
+                node.Condition ??= ""; node.Otherwise ??= ""; node.Next ??= ""; node.TextKey ??= "";
+                node.SpeakerId ??= ""; node.ExpressionId ??= ""; }
+            Assert.That(runner.Resume(graph, snapshot), Is.True);
+        }
+
+        [Test]
+        public void StartFreezesValidatedDefinitionBeforeConditionCallbacks()
+        {
+            var adapter = new Adapter { Condition = true };
+            var graph = Graph(Line(), End()); graph.Conditions = new[] { "ready" };
+            var context = Context;
+            adapter.Callback = () => { graph.Nodes[0].Next = "missing"; context.ActorId = "changed"; };
+            var runner = new DialogueRunner(adapter);
+            Assert.That(runner.Start(graph, DialogueTrigger.Interaction, context, "s"), Is.True);
+            Assert.That(runner.Advance(), Is.True);
+            Assert.That(runner.State, Is.EqualTo(DialogueState.Completed));
+        }
+
+        [Test]
         public void LocalizedLineAdvancesToCompletionAndCannotAdvanceAgain()
         {
             var runner = new DialogueRunner(new Adapter());
             Assert.That(runner.Start(Graph(Line(), End()), DialogueTrigger.Interaction, Context, "session-1"), Is.True);
             Assert.That(runner.SpeakerId, Is.EqualTo("trainer"));
-            Assert.That(runner.Text, Is.EqualTo("localized:dialogue_training_name"));
+            Assert.That(runner.GetText(), Is.EqualTo("localized:dialogue_training_name"));
             Assert.That(runner.Advance(), Is.True);
             Assert.That(runner.State, Is.EqualTo(DialogueState.Completed));
             Assert.That(runner.Advance(), Is.False);
@@ -146,7 +335,8 @@ namespace Moonlight.Interaction.Tests
             var runner = new DialogueRunner(adapter);
             Assert.That(runner.Start(Graph(Action(), End()), DialogueTrigger.Automatic, Context, "s"), Is.False);
             Assert.That(runner.State, Is.EqualTo(DialogueState.Faulted));
-            Assert.That(runner.Error, Is.Not.Empty);
+            Assert.That(runner.Error, Is.EqualTo(throwing ? "Dialogue adapter failed: adapter exception" : "Action rejected at action"));
+            if (throwing) Assert.That(runner.LastException, Is.TypeOf<InvalidOperationException>());
             Assert.That(runner.Advance(), Is.False);
             Assert.That(adapter.Effects, Is.Zero);
         }
@@ -154,10 +344,19 @@ namespace Moonlight.Interaction.Tests
         [Test]
         public void AutomaticCycleFaultsWhileFiniteActionChainWorks()
         {
-            var runner = new DialogueRunner(new Adapter());
+            var adapter = new Adapter();
+            var runner = new DialogueRunner(adapter);
             Assert.That(runner.Start(Graph(Action("action", "action")), DialogueTrigger.Automatic, Context, "s"), Is.False);
-            Assert.That(runner.Error, Does.Contain("cycle"));
+            Assert.That(runner.Error, Is.EqualTo("Automatic transition cycle."));
+            Assert.That(adapter.Effects, Is.Zero);
+            Assert.That(runner.Start(Graph(Action("a", "b"), Action("b", "a")), DialogueTrigger.Automatic, Context, "s"), Is.False);
+            Assert.That(adapter.Effects, Is.Zero);
+            var branchCycle = Graph(new DialogueNode { Id = "branch", Kind = DialogueNodeKind.Branch,
+                Condition = "ready", Next = "end", Otherwise = "action" }, Action("action", "branch"), End());
+            Assert.That(DialogueRunner.Validate(branchCycle, out var error), Is.False);
+            Assert.That(error, Is.EqualTo("Automatic transition cycle."));
             Assert.That(runner.Start(Graph(Action(), End()), DialogueTrigger.Automatic, Context, "s2"), Is.True);
+            Assert.That(adapter.Effects, Is.EqualTo(1));
         }
 
         [Test]
@@ -166,9 +365,11 @@ namespace Moonlight.Interaction.Tests
             var adapter = new Adapter();
             var runner = new DialogueRunner(adapter);
             adapter.Callback = () => { Assert.That(runner.Cancel(), Is.False); Assert.That(runner.Advance(), Is.False);
-                Assert.That(runner.Suspend(), Is.Null); };
+                Assert.That(runner.Suspend(), Is.Null);
+                Assert.That(runner.Start(Graph(Line(), End()), DialogueTrigger.Interaction, Context, "nested"), Is.False);
+                Assert.That(runner.CanStart(Graph(Line(), End()), DialogueTrigger.Interaction, Context), Is.False); };
             Assert.That(runner.Start(Graph(Action("a", "line"), Line(), End()), DialogueTrigger.Interaction, Context, "s"), Is.True);
-            Assert.That(runner.Text, Is.Not.Null);
+            Assert.That(runner.GetText(), Is.Not.Null);
             Assert.That(runner.State, Is.EqualTo(DialogueState.Running));
             Assert.That(adapter.Effects, Is.EqualTo(1));
         }
@@ -205,6 +406,8 @@ namespace Moonlight.Interaction.Tests
         [TestCase("null-node")]
         [TestCase("empty-id")]
         [TestCase("null-conditions")]
+        [TestCase("zero-triggers")]
+        [TestCase("missing-kind")]
         public void InvalidGraphsFailBeforeAnyEffectsWithValidNegativeControl(string mutation)
         {
             var graph = Graph(Line(), End());
@@ -225,13 +428,23 @@ namespace Moonlight.Interaction.Tests
                 case "null-node": graph.Nodes[0] = null; break;
                 case "empty-id": graph.Id = " "; break;
                 case "null-conditions": graph.Conditions = null; break;
+                case "zero-triggers": graph.Triggers = 0; break;
+                case "missing-kind": graph.Nodes[0].Kind = DialogueNodeKind.Invalid; break;
             }
             var adapter = new Adapter();
             var runner = new DialogueRunner(adapter);
             Assert.That(DialogueRunner.Validate(graph, out var validationError), Is.False);
-            Assert.That(validationError, Is.Not.Empty);
+            var expected = mutation switch {
+                "schema" => "Unsupported dialogue graph schema.",
+                "entry" => "Dangling graph entry.",
+                "duplicate" or "kind" or "missing-kind" or "null-node" => "Invalid or duplicate node ID/kind.",
+                "next" => "Dangling transition at line",
+                "speaker" or "text" => "Line requires speaker/text IDs at line",
+                "condition" => "Empty trigger condition.",
+                _ => "Graph requires IDs, revision, nodes, conditions and supported triggers." };
+            Assert.That(validationError, Is.EqualTo(expected));
             Assert.That(runner.Start(graph, DialogueTrigger.Interaction, Context, "s"), Is.False);
-            Assert.That(runner.Error, Is.Not.Empty);
+            Assert.That(runner.Error, Is.EqualTo(expected));
             Assert.That(adapter.Effects, Is.Zero);
         }
 
@@ -265,7 +478,11 @@ namespace Moonlight.Interaction.Tests
                 case "choice-text": choice.Choices[0].TextKey = " "; break;
             }
             Assert.That(DialogueRunner.Validate(graph, out var error), Is.False);
-            Assert.That(error, Is.Not.Empty);
+            Assert.That(error, Is.EqualTo(mutation switch {
+                "branch-condition" or "branch-target" => "Branch requires condition and both targets at branch",
+                "action-id" => "Action ID required at action",
+                "empty-choices" => "Choice options required at choose",
+                _ => "Invalid choice ID/text/target at choose" }));
         }
 
         [TestCase("schema")]
@@ -294,7 +511,8 @@ namespace Moonlight.Interaction.Tests
                 case "content": graph.Nodes[0].TextKey = "changed-without-revision"; break;
             }
             Assert.That(runner.Resume(graph, snapshot), Is.False);
-            Assert.That(runner.Error, Is.Not.Empty);
+            Assert.That(runner.Error, Is.EqualTo(mutation == "node"
+                ? "Snapshot must identify a waiting line or choice." : "Snapshot does not match this graph/schema."));
         }
     }
 }

@@ -19,8 +19,8 @@ namespace Moonlight.Interaction.Dialogue
 
     [Flags]
     public enum DialogueTrigger { Interaction = 1, Automatic = 2 }
-    public enum DialogueNodeKind { Line, Choice, Branch, Action, End }
-    public enum DialogueState { Idle, Running, Completed, Cancelled, Suspended, Faulted }
+    public enum DialogueNodeKind { Invalid = 0, Line = 1, Choice = 2, Branch = 3, Action = 4, End = 5 }
+    public enum DialogueState { Idle = 0, Running = 1, Completed = 2, Cancelled = 3, Suspended = 4, Faulted = 5 }
 
     [Serializable]
     public sealed class DialogueNode
@@ -28,6 +28,7 @@ namespace Moonlight.Interaction.Dialogue
         public string Id;
         public DialogueNodeKind Kind;
         public string SpeakerId;
+        public string ExpressionId;
         public string TextKey;
         public string Next;
         public string Condition;
