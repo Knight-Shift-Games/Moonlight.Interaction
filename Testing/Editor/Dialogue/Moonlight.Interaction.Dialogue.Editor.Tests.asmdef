@@ -1,0 +1,10 @@
+{
+  "name": "Moonlight.Interaction.Dialogue.Editor.Tests",
+  "references": ["Moonlight.Interaction.Dialogue.Editor", "GUID:5a694da8bf654ae287c7cfb0b8510858", "UnityEngine.TestRunner", "UnityEditor.TestRunner"],
+  "includePlatforms": ["Editor"],
+  "overrideReferences": true,
+  "precompiledReferences": ["nunit.framework.dll"],
+  "defineConstraints": ["UNITY_INCLUDE_TESTS"],
+  "autoReferenced": false,
+  "rootNamespace": "Moonlight.Interaction.Dialogue.Editor.Tests"
+}
