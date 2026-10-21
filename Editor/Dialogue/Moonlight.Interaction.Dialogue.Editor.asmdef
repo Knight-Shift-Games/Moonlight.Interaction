@@ -1,0 +1,7 @@
+{
+  "name": "Moonlight.Interaction.Dialogue.Editor",
+  "references": ["GUID:5a694da8bf654ae287c7cfb0b8510858"],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": false,
+  "rootNamespace": "Moonlight.Interaction.Dialogue.Editor"
+}
