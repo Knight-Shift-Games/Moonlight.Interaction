@@ -47,9 +47,10 @@ namespace Moonlight.Interaction.Dialogue.Editor
         public DialogueNode AddNode(DialogueNodeKind kind, Vector2 position)
         {
             Record("Add dialogue node");
+            Graph ??= new DialogueGraph { Id = NewId(), Revision = NewId() };
             var node = new DialogueNode { Id = NewId(), Kind = kind };
-            var nodes = new List<DialogueNode>(Graph.Nodes) { node }; Graph.Nodes = nodes.ToArray();
-            var placements = new List<DialoguePlacement>(Placements) { new() { NodeId = node.Id, Position = position } };
+            var nodes = new List<DialogueNode>(Graph.Nodes ?? Array.Empty<DialogueNode>()) { node }; Graph.Nodes = nodes.ToArray();
+            var placements = new List<DialoguePlacement>(Placements ?? Array.Empty<DialoguePlacement>()) { new() { NodeId = node.Id, Position = position } };
             Placements = placements.ToArray(); Changed(); return node;
         }
         public void RemoveNode(string id)
@@ -65,14 +66,14 @@ namespace Moonlight.Interaction.Dialogue.Editor
         public void Changed() { Graph.Revision = NewId(); EditorUtility.SetDirty(this); }
         public Vector2 Position(string id)
         {
-            foreach (var p in Placements) if (p.NodeId == id) return p.Position;
+            foreach (var p in Placements ?? Array.Empty<DialoguePlacement>()) if (p != null && p.NodeId == id) return p.Position;
             return new Vector2(60, 60);
         }
         public void Move(string id, Vector2 position)
         {
-            var found = Array.Find(Placements, p => p.NodeId == id);
+            var found = Array.Find(Placements ?? Array.Empty<DialoguePlacement>(), p => p != null && p.NodeId == id);
             if (found != null) found.Position = position;
-            else { var list = new List<DialoguePlacement>(Placements) { new() { NodeId = id, Position = position } }; Placements = list.ToArray(); }
+            else { var list = new List<DialoguePlacement>(Placements ?? Array.Empty<DialoguePlacement>()) { new() { NodeId = id, Position = position } }; Placements = list.ToArray(); }
             EditorUtility.SetDirty(this); // Layout is not runtime content and does not invalidate checkpoints.
         }
     }

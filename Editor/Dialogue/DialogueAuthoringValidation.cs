@@ -32,21 +32,31 @@ namespace Moonlight.Interaction.Dialogue.Editor
                 if (node.Kind == DialogueNodeKind.Branch) Condition(node.Condition, node.Id);
                 if (node.Kind == DialogueNodeKind.Action && !actions.Contains(node.Action ?? "")) errors.Add(node.Id + ": action is not allowed: " + node.Action);
                 if (node.Kind == DialogueNodeKind.Choice)
+                {
+                    var choiceIds = new HashSet<string>(StringComparer.Ordinal);
                     foreach (var choice in node.Choices ?? Array.Empty<DialogueChoice>())
                     {
                         if (choice == null) continue;
+                        if (!choiceIds.Add(choice.Id ?? "")) errors.Add(node.Id + ": duplicate choice ID: " + choice.Id);
+                        if (!Array.Exists(graph.Nodes, target => target != null && target.Id == choice.Next)) errors.Add(node.Id + "/" + choice.Id + ": missing choice target: " + choice.Next);
                         if (!texts.Contains(choice.TextKey ?? "")) errors.Add(node.Id + ": missing choice localization key: " + choice.TextKey);
                         Condition(choice.Condition, node.Id);
                     }
+                }
             }
             // Structural checks do not execute adapters or assume which conditions will hold.
             var reachable = Reach(graph.Entry, nodes);
-            foreach (var id in nodes.Keys) if (!reachable.Contains(id)) errors.Add(id + ": unreachable from entry.");
+            foreach (var id in nodes.Keys) if (nodes.ContainsKey(graph.Entry ?? "") && !reachable.Contains(id)) errors.Add(id + ": unreachable from entry.");
             var policies = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var policy in document.Loops ?? Array.Empty<DialogueLoopPolicy>())
-                if (policy == null || string.IsNullOrWhiteSpace(policy.NodeId) || !nodes.ContainsKey(policy.NodeId)
-                    || policies.ContainsKey(policy.NodeId) || string.IsNullOrWhiteSpace(policy.ExitPolicy)) errors.Add("Loop policy requires a unique existing node and an exit description.");
-                else policies.Add(policy.NodeId, policy.ExitPolicy);
+            {
+                if (policy == null) { errors.Add("Missing loop policy."); continue; }
+                if (string.IsNullOrWhiteSpace(policy.NodeId)) { errors.Add("Loop policy requires a node ID."); continue; }
+                if (!nodes.ContainsKey(policy.NodeId)) { errors.Add("Loop policy references missing node: " + policy.NodeId); continue; }
+                if (policies.ContainsKey(policy.NodeId)) { errors.Add("Duplicate loop policy: " + policy.NodeId); continue; }
+                if (string.IsNullOrWhiteSpace(policy.ExitPolicy)) { errors.Add(policy.NodeId + ": loop policy requires an exit description."); continue; }
+                policies.Add(policy.NodeId, policy.ExitPolicy);
+            }
             // For every cyclic node require an explicit policy and a structural route to End.
             // Runtime separately rejects automatic-only cycles, even when a policy is supplied.
             foreach (var pair in nodes)
@@ -75,7 +85,7 @@ namespace Moonlight.Interaction.Dialogue.Editor
             var set = new HashSet<string>(StringComparer.Ordinal);
             if (entries == null) { errors.Add("Missing " + label + " catalogue."); return set; }
             foreach (var entry in entries)
-            { var id = key(entry); if (string.IsNullOrWhiteSpace(id) || !set.Add(id)) errors.Add("Empty or duplicate " + label + "."); }
+            { var id = key(entry); if (string.IsNullOrWhiteSpace(id)) errors.Add("Empty " + label + "."); else if (!set.Add(id)) errors.Add("Duplicate " + label + ": " + id); }
             return set;
         }
         public static IEnumerable<string> Targets(DialogueNode node)

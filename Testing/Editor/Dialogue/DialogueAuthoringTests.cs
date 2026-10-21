@@ -36,31 +36,89 @@ namespace Moonlight.Interaction.Dialogue.Editor.Tests
             return d;
         }
         DialogueNode Node(string id) => Array.Find(_document.Graph.Nodes, n => n.Id == id);
-        void AssertError(string message) => Assert.That(DialogueAuthoringValidation.Validate(_document), Has.Some.Contains(message));
+        void AssertError(string message) => Assert.That(DialogueAuthoringValidation.Validate(_document), Does.Contain(message));
         void Valid() => Assert.That(DialogueAuthoringValidation.Validate(_document), Is.Empty);
 
         [TestCase(DialoguePresentation.IllustratedConversation)]
         [TestCase(DialoguePresentation.SoftBark)]
         public void BothModesUseTheSameProductionSchema(DialoguePresentation mode)
         { _document.Presentation = mode; Valid(); Assert.That(_document.Graph.Schema, Is.EqualTo(1)); }
-        [Test] public void MissingParticipantIsRejected() { Node("line").SpeakerId = "absent"; AssertError("missing participant"); }
-        [Test] public void MissingLineKeyIsRejected() { Node("line").TextKey = "absent"; AssertError("missing localization key"); }
-        [Test] public void MissingChoiceKeyIsRejected() { Node("choice").Choices[0].TextKey = "absent"; AssertError("missing choice localization key"); }
-        [Test] public void MissingTargetIsRejected() { Node("line").Next = "absent"; AssertError("Dangling transition"); }
-        [Test] public void MissingChoiceTargetIsRejected() { Node("choice").Choices[0].Next = "absent"; AssertError("Invalid choice"); }
-        [Test] public void MissingEntryIsRejected() { _document.Graph.Entry = "absent"; AssertError("Dangling graph entry"); }
-        [Test] public void DuplicateNodeIsRejected() { Node("line").Id = "end"; AssertError("duplicate node"); }
-        [Test] public void DuplicateChoiceIsRejected() { Node("choice").Choices[0].Id = "no"; AssertError("Invalid choice"); }
-        [Test] public void UnreachableNodeIsRejected() { _document.Graph.Entry = "line"; AssertError("unreachable"); }
-        [Test] public void UnknownActionIsRejected() { Node("action").Action = "unregistered"; AssertError("action is not allowed"); }
-        [Test] public void UnknownBranchConditionIsRejected() { Node("branch").Condition = "unregistered"; AssertError("condition is not allowed"); }
-        [Test] public void UnknownTriggerConditionIsRejected() { _document.Graph.Conditions = new[] { "unregistered" }; AssertError("condition is not allowed"); }
-        [Test] public void UnknownChoiceConditionIsRejected() { Node("choice").Choices[0].Condition = "unregistered"; AssertError("condition is not allowed"); }
-        [Test] public void DuplicateCataloguesAreRejected() { _document.AllowedActions = new[] { "record", "record" }; AssertError("duplicate action"); }
-        [Test] public void BlankCatalogueEntryIsRejected() { _document.AllowedConditions = new[] { "" }; AssertError("Empty or duplicate condition"); }
-        [Test] public void InvalidModeIsRejected() { _document.Presentation = (DialoguePresentation)42; AssertError("presentation mode"); }
-        [Test] public void UnsupportedSchemaIsRejected() { _document.Graph.Schema = 99; AssertError("Unsupported"); }
-        [Test] public void NullDocumentIsRejected() { Assert.That(DialogueAuthoringValidation.Validate(null), Is.Not.Empty); }
+        [Test] public void MissingParticipantIsRejected() { Node("line").SpeakerId = "absent"; AssertError("line: missing participant: absent"); }
+        [Test] public void MissingLineKeyIsRejected() { Node("line").TextKey = "absent"; AssertError("line: missing localization key: absent"); }
+        [Test] public void MissingChoiceKeyIsRejected() { Node("choice").Choices[0].TextKey = "absent"; AssertError("choice: missing choice localization key: absent"); }
+        [Test] public void MissingTargetIsRejected() { Node("line").Next = "absent"; AssertError("Dangling transition at line"); }
+        [Test] public void MissingChoiceTargetIsRejected() { Node("choice").Choices[0].Next = "absent"; AssertError("choice/yes: missing choice target: absent"); }
+        [Test] public void MissingEntryIsRejected() { _document.Graph.Entry = "absent"; AssertError("Dangling graph entry."); }
+        [Test] public void DuplicateNodeIsRejected() { Node("line").Id = "end"; AssertError("Invalid or duplicate node ID/kind."); }
+        [Test] public void DuplicateChoiceIsRejected() { Node("choice").Choices[0].Id = "no"; AssertError("choice: duplicate choice ID: no"); }
+        [Test] public void UnreachableNodeIsRejected() { _document.Graph.Entry = "line"; AssertError("branch: unreachable from entry."); }
+        [Test] public void UnknownActionIsRejected() { Node("action").Action = "unregistered"; AssertError("action: action is not allowed: unregistered"); }
+        [Test] public void UnknownBranchConditionIsRejected() { Node("branch").Condition = "unregistered"; AssertError("branch: condition is not allowed: unregistered"); }
+        [Test] public void UnknownTriggerConditionIsRejected() { _document.Graph.Conditions = new[] { "unregistered" }; AssertError("Graph: condition is not allowed: unregistered"); }
+        [Test] public void UnknownChoiceConditionIsRejected() { Node("choice").Choices[0].Condition = "unregistered"; AssertError("choice: condition is not allowed: unregistered"); }
+        [Test] public void DuplicateCataloguesAreRejected() { _document.AllowedActions = new[] { "record", "record" }; AssertError("Duplicate action: record"); }
+        [Test] public void BlankCatalogueEntryIsRejected() { _document.AllowedConditions = new[] { "" }; AssertError("Empty condition."); }
+        [Test] public void InvalidModeIsRejected() { _document.Presentation = (DialoguePresentation)42; AssertError("Choose a supported presentation mode."); }
+        [Test] public void UnsupportedSchemaIsRejected() { _document.Graph.Schema = 99; AssertError("Unsupported dialogue graph schema."); }
+        [Test] public void NullDocumentIsRejected() { Assert.That(DialogueAuthoringValidation.Validate(null), Is.EqualTo(new[] { "Choose a dialogue document." })); }
+
+        [TestCase("participant")]
+        [TestCase("localization key")]
+        [TestCase("condition")]
+        [TestCase("action")]
+        public void MissingCatalogueIsRejected(string label)
+        {
+            SetCatalogue(label, null); AssertError("Missing " + label + " catalogue.");
+        }
+        [TestCase("participant", false)] [TestCase("participant", true)]
+        [TestCase("localization key", false)] [TestCase("localization key", true)]
+        [TestCase("condition", false)] [TestCase("condition", true)]
+        [TestCase("action", false)] [TestCase("action", true)]
+        public void CatalogueEmptyAndDuplicateHaveDistinctDiagnostics(string label, bool duplicate)
+        {
+            SetCatalogue(label, duplicate ? new[] { "duplicate", "duplicate" } : new[] { " " });
+            AssertError(duplicate ? "Duplicate " + label + ": duplicate" : "Empty " + label + ".");
+        }
+        void SetCatalogue(string label, string[] values)
+        {
+            switch (label)
+            {
+                case "participant": _document.Participants = values == null ? null : Array.ConvertAll(values, id => new DialogueParticipant { Id = id }); break;
+                case "localization key": _document.Texts = values == null ? null : Array.ConvertAll(values, key => new DialogueText { Key = key }); break;
+                case "condition": _document.AllowedConditions = values; break;
+                case "action": _document.AllowedActions = values; break;
+            }
+        }
+        [Test] public void NullLoopPolicyIsRejected() { _document.Loops = new DialogueLoopPolicy[] { null }; AssertError("Missing loop policy."); }
+        [Test] public void EmptyLoopNodeIdIsRejected() { _document.Loops = new[] { new DialogueLoopPolicy { NodeId = " ", ExitPolicy = "Exit" } }; AssertError("Loop policy requires a node ID."); }
+        [Test] public void DanglingEntryDoesNotFloodUnreachableDiagnostics()
+        { _document.Graph.Entry = "missing"; Assert.That(DialogueAuthoringValidation.Validate(_document), Is.EqualTo(new[] { "Dangling graph entry." })); }
+        [Test] public void AddNodeRecoversMissingNodeAndPlacementArrays()
+        {
+            _document.Graph.Nodes = null; _document.Placements = null;
+            var node = _document.AddNode(DialogueNodeKind.End, new Vector2(30, 40));
+            Assert.That(_document.Graph.Nodes, Has.Length.EqualTo(1)); Assert.That(_document.Position(node.Id), Is.EqualTo(new Vector2(30, 40)));
+        }
+        [Test] public void InvalidExportAndPublishCannotWriteOrDeliver()
+        {
+            var window = ScriptableObject.CreateInstance<DialogueGraphWindow>();
+            var serialized = new SerializedObject(window);
+            serialized.FindProperty("_document").objectReferenceValue = _document; serialized.ApplyModifiedPropertiesWithoutUndo();
+            _assetPath = "Assets/ARC313-export-" + Guid.NewGuid().ToString("N") + ".json";
+            var calls = 0; Action<DialogueDocument> publish = d => calls++;
+            DialogueGraphWindow.PublishRequested += publish;
+            try
+            {
+                Node("line").Next = "missing";
+                Assert.That(window.TryPublish(), Is.False); Assert.That(calls, Is.Zero);
+                Assert.That(window.TryExport(_assetPath), Is.False); Assert.That(System.IO.File.Exists(_assetPath), Is.False);
+                Node("line").Next = "end";
+                Assert.That(window.TryPublish(publish), Is.True); Assert.That(calls, Is.EqualTo(1));
+                Assert.That(window.TryExport(_assetPath), Is.True);
+                Assert.That(JsonUtility.FromJson<DialogueGraph>(System.IO.File.ReadAllText(_assetPath)).Id, Is.EqualTo("fixture"));
+            }
+            finally { DialogueGraphWindow.PublishRequested -= publish; Object.DestroyImmediate(window); }
+        }
 
         void InteractiveLoop()
         {
@@ -68,14 +126,14 @@ namespace Moonlight.Interaction.Dialogue.Editor.Tests
             _document.Loops = new[] { new DialogueLoopPolicy { NodeId = "action", ExitPolicy = "Choose Later" }, new DialogueLoopPolicy { NodeId = "choice", ExitPolicy = "Choose Later" } };
         }
         [Test] public void ExplicitInteractiveLoopWithUnconditionalExitIsAllowed() { InteractiveLoop(); Valid(); }
-        [Test] public void InteractiveLoopWithoutPolicyIsRejected() { InteractiveLoop(); _document.Loops = Array.Empty<DialogueLoopPolicy>(); AssertError("requires an exit policy"); }
-        [Test] public void BlankLoopPolicyIsRejected() { InteractiveLoop(); _document.Loops[0].ExitPolicy = " "; AssertError("exit description"); }
-        [Test] public void DanglingLoopPolicyIsRejected() { InteractiveLoop(); _document.Loops[0].NodeId = "missing"; AssertError("exit description"); }
-        [Test] public void DuplicateLoopPolicyIsRejected() { InteractiveLoop(); _document.Loops[0].NodeId = "choice"; AssertError("unique existing node"); }
-        [Test] public void ClosedInteractiveLoopIsRejected() { InteractiveLoop(); Node("choice").Choices[1].Next = "action"; AssertError("no route to End"); }
-        [Test] public void ConditionalOnlyLoopExitIsRejected() { InteractiveLoop(); Node("choice").Choices[1].Condition = "trained"; AssertError("unconditional exit"); }
+        [Test] public void InteractiveLoopWithoutPolicyIsRejected() { InteractiveLoop(); _document.Loops = Array.Empty<DialogueLoopPolicy>(); AssertError("action: intentional loop requires an exit policy."); }
+        [Test] public void BlankLoopPolicyIsRejected() { InteractiveLoop(); _document.Loops[0].ExitPolicy = " "; AssertError("action: loop policy requires an exit description."); }
+        [Test] public void DanglingLoopPolicyIsRejected() { InteractiveLoop(); _document.Loops[0].NodeId = "missing"; AssertError("Loop policy references missing node: missing"); }
+        [Test] public void DuplicateLoopPolicyIsRejected() { InteractiveLoop(); _document.Loops[0].NodeId = "choice"; AssertError("Duplicate loop policy: choice"); }
+        [Test] public void ClosedInteractiveLoopIsRejected() { InteractiveLoop(); Node("choice").Choices[1].Next = "action"; AssertError("action: loop has no route to End."); }
+        [Test] public void ConditionalOnlyLoopExitIsRejected() { InteractiveLoop(); Node("choice").Choices[1].Condition = "trained"; AssertError("choice: loop choice requires an unconditional exit outside the cycle."); }
         [Test] public void AutomaticCycleCannotBeWaivedByPolicy()
-        { Node("action").Next = "action"; _document.Loops = new[] { new DialogueLoopPolicy { NodeId = "action", ExitPolicy = "Condition changes" } }; AssertError("Automatic transition cycle"); }
+        { Node("action").Next = "action"; _document.Loops = new[] { new DialogueLoopPolicy { NodeId = "action", ExitPolicy = "Condition changes" } }; AssertError("Automatic transition cycle."); }
 
         sealed class RuntimeAdapter : IDialogueAdapter
         {
@@ -128,7 +186,7 @@ namespace Moonlight.Interaction.Dialogue.Editor.Tests
             _document.Record("Move"); _document.Move("line", new Vector2(130, 140)); Undo.FlushUndoRecordObjects(); Undo.PerformUndo();
             Assert.That(_document.Position("line"), Is.EqualTo(new Vector2(30, 40))); Assert.That(_document.Graph.Revision, Is.EqualTo(revision));
         }
-        [Test] public void DeleteLeavesIncomingTargetVisibleForValidation() { _document.RemoveNode("line"); Assert.That(Node("branch").Next, Is.EqualTo("line")); AssertError("Dangling transition"); }
+        [Test] public void DeleteLeavesIncomingTargetVisibleForValidation() { _document.RemoveNode("line"); Assert.That(Node("branch").Next, Is.EqualTo("line")); AssertError("Dangling transition at branch"); }
         [Test] public void NewDocumentIsImmediatelyValid() { var d = DialogueDocument.Create(); try { Assert.That(DialogueAuthoringValidation.Validate(d), Is.Empty); } finally { Object.DestroyImmediate(d); } }
         [Test] public void SaveReopenAndRuntimeJsonPreserveAllStableIds()
         {
@@ -146,8 +204,14 @@ namespace Moonlight.Interaction.Dialogue.Editor.Tests
         }
         [Test] public void EditorAssembliesAreIsolatedFromPlayers()
         {
-            var path = AssetDatabase.GUIDToAssetPath(AssetDatabase.FindAssets("Moonlight.Interaction.Dialogue.Editor t:AssemblyDefinitionAsset")[0]);
-            Assert.That(System.IO.File.ReadAllText(path), Does.Contain("\"Editor\""));
+            foreach (var name in new[] { "Moonlight.Interaction.Dialogue.Editor", "Moonlight.Interaction.Dialogue.Editor.Tests" })
+            {
+                var matches = Array.FindAll(AssetDatabase.FindAssets(name + " t:AssemblyDefinitionAsset"),
+                    guid => System.IO.Path.GetFileNameWithoutExtension(AssetDatabase.GUIDToAssetPath(guid)) == name);
+                Assert.That(matches, Has.Length.EqualTo(1), name);
+                var path = AssetDatabase.GUIDToAssetPath(matches[0]);
+                Assert.That(System.IO.File.ReadAllText(path), Does.Contain("\"Editor\""), name);
+            }
             Assert.That(typeof(DialogueRunner).Assembly.GetReferencedAssemblies(), Has.None.Property("Name").EqualTo(typeof(DialogueDocument).Assembly.GetName().Name));
         }
         [Test] public void NativeAssetOpenCallbackOpensTheDocumentWindow()
