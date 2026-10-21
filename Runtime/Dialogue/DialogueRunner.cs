@@ -163,7 +163,7 @@ namespace Moonlight.Interaction.Dialogue
                         var delivery = "v1:" + Part(_session) + ":" + _sequence.ToString(CultureInfo.InvariantCulture)
                             + ":" + Part(_graph.Id) + ":" + Part(_node.Id) + ":" + Part(_node.Action) + ":" + Part(_node.Argument);
                         ++_sequence; // reserve before delivery; failed actions fault, never retry implicitly
-                        if (!_adapter.TryExecute(_node.Action, _node.Argument, delivery, Copy(_context)))
+                        if (!_adapter.TryExecute(_node.Action, _node.Argument ?? "", delivery, Copy(_context)))
                             return Fail("Action rejected at " + _node.Id);
                         id = _node.Next;
                         break;

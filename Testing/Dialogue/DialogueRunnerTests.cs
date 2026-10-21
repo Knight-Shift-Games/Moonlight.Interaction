@@ -15,6 +15,7 @@ namespace Moonlight.Interaction.Tests
             public bool ThrowCondition;
             public bool ThrowText;
             public int Effects;
+            public string LastArgument;
             public readonly HashSet<string> Deliveries = new();
             public Action Callback;
             public bool IsConditionMet(string key, DialogueContext context)
@@ -27,6 +28,7 @@ namespace Moonlight.Interaction.Tests
                 if (Throw) throw new InvalidOperationException("adapter exception");
                 if (Reject) return false;
                 if (Deliveries.Add(id)) ++Effects;
+                LastArgument = argument;
                 context.ActorId = "mutated";
                 return true;
             }
@@ -212,6 +214,20 @@ namespace Moonlight.Interaction.Tests
                 node.Condition ??= ""; node.Otherwise ??= ""; node.Next ??= ""; node.TextKey ??= "";
                 node.SpeakerId ??= ""; node.ExpressionId ??= ""; }
             Assert.That(runner.Resume(graph, snapshot), Is.True);
+        }
+
+        [Test]
+        public void OptionalActionArgumentUsesSameCanonicalPayloadBeforeAndAfterSerialization()
+        {
+            var adapter = new Adapter();
+            var runner = new DialogueRunner(adapter);
+            var graph = Graph(Action(), End()); graph.Nodes[0].Argument = null;
+            Assert.That(runner.Start(graph, DialogueTrigger.Interaction, Context, "s"), Is.True);
+            Assert.That(adapter.LastArgument, Is.EqualTo(""));
+            graph.Nodes[0].Argument = "";
+            Assert.That(runner.Start(graph, DialogueTrigger.Interaction, Context, "s"), Is.True);
+            Assert.That(adapter.LastArgument, Is.EqualTo(""));
+            Assert.That(adapter.Effects, Is.EqualTo(1));
         }
 
         [Test]
