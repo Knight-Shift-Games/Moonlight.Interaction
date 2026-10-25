@@ -182,6 +182,8 @@ namespace Moonlight.Interaction.Dialogue.Editor.Tests
             _document.Record("Move"); _document.Move("line", new Vector2(130, 140)); Undo.FlushUndoRecordObjects(); Undo.PerformUndo();
             Assert.That(_document.Position("line"), Is.EqualTo(new Vector2(30, 40))); Assert.That(_document.Graph.Revision, Is.EqualTo(revision));
         }
+        [Test] public void DeleteLeavesIncomingTargetVisibleForValidation() { _document.RemoveNode("line"); Assert.That(Node("branch").Next, Is.EqualTo("line")); AssertError("Dangling transition at branch"); }
+        [Test] public void NewDocumentIsImmediatelyValid() { var d = DialogueDocument.Create(); try { Assert.That(DialogueAuthoringValidation.Validate(d), Is.Empty); } finally { Object.DestroyImmediate(d); } }
         [Test] public void InMemorySerializationPreservesStableIdsAndEditorState()
         {
             var graph = JsonUtility.ToJson(_document.Graph);
