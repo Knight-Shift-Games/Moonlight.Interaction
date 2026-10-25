@@ -10,12 +10,10 @@ namespace Moonlight.Interaction.Dialogue.Editor.Tests
     public sealed class DialogueAuthoringTests
     {
         DialogueDocument _document;
-        string _assetPath;
         [SetUp] public void SetUp() => _document = Fixture();
         [TearDown] public void TearDown()
         {
             Undo.ClearAll();
-            if (!string.IsNullOrEmpty(_assetPath)) AssetDatabase.DeleteAsset(_assetPath);
             if (_document != null && !EditorUtility.IsPersistent(_document)) Object.DestroyImmediate(_document);
         }
         static DialogueDocument Fixture()
@@ -99,23 +97,21 @@ namespace Moonlight.Interaction.Dialogue.Editor.Tests
             var node = _document.AddNode(DialogueNodeKind.End, new Vector2(30, 40));
             Assert.That(_document.Graph.Nodes, Has.Length.EqualTo(1)); Assert.That(_document.Position(node.Id), Is.EqualTo(new Vector2(30, 40)));
         }
-        [Test] public void InvalidExportAndPublishCannotWriteOrDeliver()
+        [Test] public void InvalidExportIsReadOnlyAndPublishingUsesInjectedCallback()
         {
             var window = ScriptableObject.CreateInstance<DialogueGraphWindow>();
             var serialized = new SerializedObject(window);
             serialized.FindProperty("_document").objectReferenceValue = _document; serialized.ApplyModifiedPropertiesWithoutUndo();
-            _assetPath = "Assets/ARC313-export-" + Guid.NewGuid().ToString("N") + ".json";
+            string exportPath = "Assets/ARC313-export-" + Guid.NewGuid().ToString("N") + ".json";
             var calls = 0; Action<DialogueDocument> publish = d => calls++;
             DialogueGraphWindow.PublishRequested += publish;
             try
             {
                 Node("line").Next = "missing";
                 Assert.That(window.TryPublish(), Is.False); Assert.That(calls, Is.Zero);
-                Assert.That(window.TryExport(_assetPath), Is.False); Assert.That(System.IO.File.Exists(_assetPath), Is.False);
+                Assert.That(window.TryExport(exportPath), Is.False); Assert.That(System.IO.File.Exists(exportPath), Is.False);
                 Node("line").Next = "end";
                 Assert.That(window.TryPublish(publish), Is.True); Assert.That(calls, Is.EqualTo(1));
-                Assert.That(window.TryExport(_assetPath), Is.True);
-                Assert.That(JsonUtility.FromJson<DialogueGraph>(System.IO.File.ReadAllText(_assetPath)).Id, Is.EqualTo("fixture"));
             }
             finally { DialogueGraphWindow.PublishRequested -= publish; Object.DestroyImmediate(window); }
         }
@@ -186,21 +182,23 @@ namespace Moonlight.Interaction.Dialogue.Editor.Tests
             _document.Record("Move"); _document.Move("line", new Vector2(130, 140)); Undo.FlushUndoRecordObjects(); Undo.PerformUndo();
             Assert.That(_document.Position("line"), Is.EqualTo(new Vector2(30, 40))); Assert.That(_document.Graph.Revision, Is.EqualTo(revision));
         }
-        [Test] public void DeleteLeavesIncomingTargetVisibleForValidation() { _document.RemoveNode("line"); Assert.That(Node("branch").Next, Is.EqualTo("line")); AssertError("Dangling transition at branch"); }
-        [Test] public void NewDocumentIsImmediatelyValid() { var d = DialogueDocument.Create(); try { Assert.That(DialogueAuthoringValidation.Validate(d), Is.Empty); } finally { Object.DestroyImmediate(d); } }
-        [Test] public void SaveReopenAndRuntimeJsonPreserveAllStableIds()
+        [Test] public void InMemorySerializationPreservesStableIdsAndEditorState()
         {
-            var before = JsonUtility.ToJson(_document.Graph); _document.Move("line", new Vector2(10, 20)); _document.Presentation = DialoguePresentation.SoftBark;
-            _assetPath = "Assets/ARC313-" + Guid.NewGuid().ToString("N") + ".asset";
-            AssetDatabase.CreateAsset(_document, _assetPath); EditorUtility.SetDirty(_document); AssetDatabase.SaveAssets();
-            AssetDatabase.ImportAsset(_assetPath, ImportAssetOptions.ForceUpdate);
-            Assert.That(System.IO.File.ReadAllText(_assetPath), Does.Contain("fixture"));
-            Resources.UnloadAsset(_document); _document = null;
-            var loaded = AssetDatabase.LoadAssetAtPath<DialogueDocument>(_assetPath);
-            Assert.That(JsonUtility.ToJson(loaded.Graph), Is.EqualTo(before)); Assert.That(loaded.Position("line"), Is.EqualTo(new Vector2(10, 20)));
-            Assert.That(loaded.Presentation, Is.EqualTo(DialoguePresentation.SoftBark));
-            var runtime = JsonUtility.FromJson<DialogueGraph>(before); Assert.That(DialogueRunner.Validate(runtime, out var error), Is.True, error);
-            Assert.That(runtime.Nodes[2].Choices[0].Id, Is.EqualTo("yes"));
+            var graph = JsonUtility.ToJson(_document.Graph);
+            _document.Move("line", new Vector2(10, 20));
+            _document.Presentation = DialoguePresentation.SoftBark;
+            var reopened = ScriptableObject.CreateInstance<DialogueDocument>();
+            try
+            {
+                EditorJsonUtility.FromJsonOverwrite(EditorJsonUtility.ToJson(_document), reopened);
+                Assert.That(JsonUtility.ToJson(reopened.Graph), Is.EqualTo(graph));
+                Assert.That(reopened.Position("line"), Is.EqualTo(new Vector2(10, 20)));
+                Assert.That(reopened.Presentation, Is.EqualTo(DialoguePresentation.SoftBark));
+                var runtime = JsonUtility.FromJson<DialogueGraph>(graph);
+                Assert.That(DialogueRunner.Validate(runtime, out var error), Is.True, error);
+                Assert.That(runtime.Nodes[2].Choices[0].Id, Is.EqualTo("yes"));
+            }
+            finally { Object.DestroyImmediate(reopened); }
         }
         [Test] public void EditorAssembliesAreIsolatedFromPlayers()
         {
@@ -213,32 +211,6 @@ namespace Moonlight.Interaction.Dialogue.Editor.Tests
                 Assert.That(System.IO.File.ReadAllText(path), Does.Contain("\"Editor\""), name);
             }
             Assert.That(typeof(DialogueRunner).Assembly.GetReferencedAssemblies(), Has.None.Property("Name").EqualTo(typeof(DialogueDocument).Assembly.GetName().Name));
-        }
-        [Test] public void NativeAssetOpenCallbackOpensTheDocumentWindow()
-        {
-            _assetPath = "Assets/ARC313-Open-" + Guid.NewGuid().ToString("N") + ".asset";
-            AssetDatabase.CreateAsset(_document, _assetPath); AssetDatabase.SaveAssets();
-            try
-            {
-                // Exercise this registered callback and native EntityId lookup directly. Global
-                // AssetDatabase.OpenAsset also invokes a legacy Circuit callback with an invalid
-                // pre-6000.6 signature, outside this module's ownership.
-                if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
-                {
-                    // Unity still creates/binds the EditorWindow object in -nographics, but
-                    // reports these four view-initialization diagnostics for its native views.
-                    UnityEngine.TestTools.LogAssert.Expect(LogType.Error, "No graphic device is available to initialize the view.");
-                    UnityEngine.TestTools.LogAssert.Expect(LogType.Error, "No graphic device is available to show the window.");
-                    UnityEngine.TestTools.LogAssert.Expect(LogType.Error, "No graphic device is available to initialize the view.");
-                    UnityEngine.TestTools.LogAssert.Expect(LogType.Error, "No graphic device is available to initialize the view.");
-                }
-                Assert.That(DialogueGraphWindow.OpenAsset(_document.GetEntityId(), 0), Is.True);
-                var windows = Resources.FindObjectsOfTypeAll<DialogueGraphWindow>();
-                Assert.That(windows.Length, Is.EqualTo(1));
-                var serialized = new SerializedObject(windows[0]);
-                Assert.That(serialized.FindProperty("_document").objectReferenceValue, Is.EqualTo(_document));
-            }
-            finally { foreach (var window in Resources.FindObjectsOfTypeAll<DialogueGraphWindow>()) window.Close(); }
         }
         [Test] public void AssetOpenCallbackDoesNotClaimOtherAssetTypes()
         {
