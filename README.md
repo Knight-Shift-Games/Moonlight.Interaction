@@ -2,6 +2,13 @@
 
 **Moonlight.Interaction** is a flexible system for handling player interactions with world objects. It decouples the "Interactor" from the "Interactable" and supports complex interaction options, validation, and UI feedback.
 
+## Dialogue core (ARC-307)
+
+`Moonlight.Interaction.Dialogue` is an engine-free assembly for reusable schema-1 graphs,
+branching/choices/actions, interaction and automatic triggers, cancellation and checkpoints.
+Reference its asmdef explicitly. Read [the serialization and adapter contract](Runtime/Dialogue/CONTRACT.md)
+before building an editor, portrait stage, bark presenter or persistent action adapter.
+
 ## ✨ Features
 
 - **IInteractable**: Standard interface for any object that can be interacted with.
